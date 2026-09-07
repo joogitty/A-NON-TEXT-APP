@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GhostChat - Air-Gapped Anonymous Messenger</title>
+  <meta name="description" content="Serverless, offline, end-to-end encrypted anonymous messenger over local Wi-Fi and QR codes with self-destruct storage and duress locks.">
+  <meta name="theme-color" content="#070a10">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Main Application Wrapper -->
+  <div id="app" class="app-container">
+    
+    <!-- Top Security & Status Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <div class="shield-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <circle cx="12" cy="11" r="3"/>
+          </svg>
+        </div>
+        <span class="brand-title">GHOST<span class="highlight">CHAT</span></span>
+      </div>
+
+      <div class="connection-status" id="connectionStatus">
+        <span class="status-dot disconnected" id="statusDot"></span>
+        <span class="status-text" id="statusText">Offline / Standalone</span>
+      </div>
+
+      <div class="action-buttons">
+        <button id="installPwaBtn" class="install-pwa-btn" style="display: none;" title="1-Tap Install App to Phone">
+          <span>📲 Install App</span>
+        </button>
+
+        <button id="lockSessionBtn" class="icon-btn" title="Lock Session (Password)" aria-label="Lock Session">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        
+        <button id="panicBtn" class="panic-btn" title="EMERGENCY PURGE: Destroys all RAM keys, DB logs & files" aria-label="Panic Purge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>PANIC</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation & Connection Control Toolbar -->
+    <nav class="connection-toolbar">
+      <button id="btnPairQR" class="tool-btn active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <span>Pair (QR Scan)</span>
+      </button>
+
+      <button id="btnAudioFallback" class="tool-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        <span>Audio Modem</span>
+      </button>
+
+      <button id="btnManualCopy" class="tool-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+        </svg>
+        <span>Manual SDP</span>
+      </button>
+    </nav>
+
+    <!-- Session / Ephemeral Identity Header -->
+    <section class="identity-banner">
+      <div class="identity-info">
+        <span class="label">Session Identity Fingerprint:</span>
+        <span class="fingerprint" id="userFingerprint">Generating Ephemeral X25519 Key...</span>
+      </div>
+      <div class="ttl-selector">
+        <label for="ttlSelect">Auto-Purge:</label>
+        <select id="ttlSelect">
+          <option value="300000">5 Minutes</option>
+          <option value="3600000" selected>1 Hour</option>
+          <option value="28800000">8 Hours</option>
+          <option value="86400000">24 Hours</option>
+          <option value="0">Burn-on-Read</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Main Chat Timeline Area -->
+    <main class="chat-timeline" id="chatTimeline">
+      <div class="empty-state" id="emptyState">
+        <div class="ghost-hero-icon">👻</div>
+        <h3>Zero-Server Anonymous Messenger</h3>
+        <p>No phone numbers, no emails, no central servers. Communicates directly over <strong>Local Wi-Fi / Hotspot</strong> or <strong>Ultrasonic Audio</strong>.</p>
+        <div class="instruction-box">
+          <p><strong>To Connect:</strong> Tap <strong>Pair (QR Scan)</strong> above. One user taps <em>Show Offer QR</em> and the other scans it with their camera.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Chat Input Controls -->
+    <footer class="chat-input-bar">
+      <button id="btnAttachFile" class="action-icon-btn" title="Send Encrypted Image/File">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
+      <input type="file" id="fileInput" accept="image/*,video/*,audio/*,application/pdf" style="display: none;">
+
+      <button id="btnVoiceNote" class="action-icon-btn" title="Record Voice Memo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        </svg>
+      </button>
+
+      <div class="input-wrapper">
+        <textarea id="messageInput" placeholder="Type encrypted message..." rows="1" disabled></textarea>
+      </div>
+
+      <button id="btnSendMessage" class="send-btn" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </footer>
+
+  </div>
+
+  <!-- QR Pairing Modal -->
+  <div id="qrModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="qrModalTitle">P2P QR Code Pairing</h3>
+        <button class="close-modal" id="closeQrModal">&times;</button>
+      </div>
+      
+      <div class="modal-tabs">
+        <button id="tabShowQr" class="tab-btn active">Show My QR Code</button>
+        <button id="tabScanQr" class="tab-btn">Scan Peer QR Code</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Display QR Section -->
+        <div id="sectionShowQr" class="tab-content active">
+          <p class="guide-text">Let your peer scan this QR code using their phone camera:</p>
+          <div class="qr-code-container">
+            <div id="qrCanvasContainer"></div>
+          </div>
+          <div class="role-selector">
+            <button id="btnGenOffer" class="primary-btn">Generate Offer QR</button>
+            <button id="btnGenAnswer" class="secondary-btn" disabled>Generate Answer QR</button>
+          </div>
+        </div>
+
+        <!-- Camera Scanner Section -->
+        <div id="sectionScanQr" class="tab-content" style="display: none;">
+          <p class="guide-text">Point camera at peer's QR Code:</p>
+          <div class="scanner-container">
+            <video id="qrVideoPreview" playsinline muted></video>
+            <canvas id="qrScanCanvas" style="display: none;"></canvas>
+            <div class="scanner-overlay-box">
+              <div class="scan-line"></div>
+            </div>
+          </div>
+          <button id="btnToggleCamera" class="secondary-btn margin-top">Switch Camera</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual SDP Copy/Paste Modal -->
+  <div id="manualSdpModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Manual SDP Signaling Exchange</h3>
+        <button class="close-modal" id="closeManualSdpModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="guide-text">Copy your encrypted signaling payload and paste your peer's payload below:</p>
+        
+        <label>My Local Signal Payload:</label>
+        <div class="copy-box">
+          <textarea id="mySignalPayload" readonly rows="3" placeholder="Click 'Generate Offer' first..."></textarea>
+          <button id="btnCopySignal" class="secondary-btn">Copy</button>
+        </div>
+
+        <label>Paste Peer Signal Payload:</label>
+        <textarea id="peerSignalPayload" rows="3" placeholder="Paste peer's signal string here..."></textarea>
+        
+        <button id="btnApplyPeerSignal" class="primary-btn margin-top">Connect with Peer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Modem (Quiet.js Ultrasonic) Modal -->
+  <div id="audioModemModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Ultrasonic Audio Modem</h3>
+        <button class="close-modal" id="closeAudioModemModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="guide-text">Air-gapped audio fallback (~18-19 kHz sound pulses). Put devices close together (1-3 meters).</p>
+        
+        <div class="audio-controls">
+          <button id="btnStartAudioTx" class="primary-btn">Transmit Audio Signal</button>
+          <button id="btnStartAudioRx" class="secondary-btn">Listen for Audio Signal</button>
+        </div>
+
+        <div class="audio-wave-visualizer">
+          <div id="audioStatusText">Status: Idle</div>
+          <div class="wave-bars">
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Password Lock Overlay (Anti-Biometric Coercion) -->
+  <div id="sessionLockOverlay" class="lock-overlay" style="display: none;">
+    <div class="lock-card">
+      <div class="lock-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="1.8">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2>Session Locked</h2>
+      <p class="lock-subtitle">Biometrics disabled for coercion defense. Enter password to unlock.</p>
+      
+      <form id="lockForm" onsubmit="return false;">
+        <div class="input-field">
+          <input type="password" id="sessionPasswordInput" placeholder="Enter session password..." autocomplete="off">
+        </div>
+        <div class="lock-actions">
+          <button type="submit" id="btnUnlockSession" class="primary-btn full-width">Unlock Session</button>
+        </div>
+      </form>
+
+      <div class="lock-warning" id="lockWarningText">
+        <span>⚠️ 3 Invalid attempts will trigger an immediate permanent Panic Purge.</span>
+      </div>
+      
+      <button id="btnLockPanic" class="panic-link-btn">Trigger Emergency Panic Wipe Now</button>
+    </div>
+  </div>
+
+  <!-- Audio Voice Recorder Overlay -->
+  <div id="voiceRecordOverlay" class="voice-modal" style="display: none;">
+    <div class="voice-card">
+      <div class="mic-pulse">🎤</div>
+      <div class="rec-timer" id="recTimer">00:00</div>
+      <p>Recording Encrypted Voice Note...</p>
+      <div class="voice-actions">
+        <button id="btnCancelRec" class="secondary-btn">Cancel</button>
+        <button id="btnSendRec" class="primary-btn">Send Voice Memo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Include Scripts -->
+  <script src="src/crypto.js"></script>
+  <script src="src/storage.js"></script>
+  <script src="src/signaling.js"></script>
+  <script src="src/audioFallback.js"></script>
+  <script src="src/qrScanner.js"></script>
+  <script src="src/webrtc.js"></script>
+  <script src="src/sessionLock.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
