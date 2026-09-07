@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   if (installPwaBtn) {
+    installPwaBtn.style.display = 'flex'; // Always visible by default
     installPwaBtn.addEventListener('click', async () => {
       if (deferredInstallPrompt) {
         deferredInstallPrompt.prompt();
@@ -49,6 +50,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           installPwaBtn.style.display = 'none';
         }
         deferredInstallPrompt = null;
+      } else {
+        // Fallback guide if browser prompt hasn't triggered yet
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+          alert('📲 To Install on iPhone:\n1. Tap the Share button (bottom center)\n2. Tap "Add to Home Screen"');
+        } else {
+          alert('📲 To Install on Android:\n1. Tap Chrome menu (⋮ at top right)\n2. Tap "Install app" or "Add to Home screen"');
+        }
       }
     });
   }
