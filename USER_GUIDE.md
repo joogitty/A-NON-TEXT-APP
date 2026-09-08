@@ -21,6 +21,7 @@ Welcome to **GhostChat**. This application was created to allow secure, complete
 1. Download the code folder or ZIP file from GitHub to your device.
 2. Open the folder and double-click **`start.bat`** (on Windows) or run **`./start.sh`** (on Mac/Linux).
 3. Your browser will automatically open to `http://localhost:8000`.
+4. The terminal will print the **Mobile / LAN URL** (e.g. `http://192.168.1.50:8000`). Any phone or tablet on the same Wi-Fi can open this URL to join.
 
 ### On a Smartphone (iPhone / Android)
 - When you open GhostChat in Chrome or Safari, a glowing **`📲 Install App`** button will automatically appear at the top right of your screen.
@@ -32,16 +33,48 @@ Welcome to **GhostChat**. This application was created to allow secure, complete
 ## 📶 Step-by-Step Field Operation Guide
 
 ### Step 1: Connect Your Devices to the Same Local Network (NO INTERNET NEEDED!)
-- **Option A (Mobile Hotspot)**: User 1 turns on their phone's **Personal Hotspot** (you can turn cellular data OFF!). User 2 connects their phone/laptop to User 1's Wi-Fi Hotspot.
-- **Option B (Local Wi-Fi Router)**: Connect both devices to the same local Wi-Fi router (even if the router has no internet cable attached!).
+- **Option A (Mobile Hotspot)**: User 1 turns on their phone's **Personal Hotspot** (you can turn cellular data OFF!). All other users connect their phone/laptop to User 1's Wi-Fi Hotspot.
+- **Option B (Local Wi-Fi Router)**: Connect all devices to the same local Wi-Fi router (even if the router has no internet cable attached!).
 
-### Step 2: Pair Using QR Codes
-1. Both users open GhostChat.
-2. User 1 taps **Pair (QR Scan)** -> **Generate Offer QR**. A QR code appears on User 1's screen.
-3. User 2 taps **Pair (QR Scan)** -> **Scan Peer QR Code** and points their camera at User 1's screen.
-4. User 2's phone will instantly process the code and show an **Answer QR Code**.
+---
+
+### 📟 Method 1: 6-Digit Session Code (EASIEST — Works for ALL device combinations!)
+
+This is the recommended pairing method. It works for **Laptop-to-Laptop**, **Phone-to-Laptop**, **Phone-to-Phone**, and **Group sessions** with 3+ devices — no camera needed!
+
+**User 1 (Host) — Creates the Session:**
+1. Open GhostChat and tap **`6-Digit Code`** in the toolbar.
+2. Tap **`✨ Generate Session Code`**.
+3. A large code appears, e.g., **`482 910`**. Share this code verbally or by text with your peers.
+
+**User 2, 3, 4... (Joiners) — Join the Session:**
+1. Open GhostChat on their device and tap **`6-Digit Code`** in the toolbar.
+2. Tap the **`Join Session`** tab.
+3. Type in the 6-digit code (e.g., `482910`).
+4. Tap **`🔗 Connect to Session`**.
+5. Done! The status bar turns **GREEN** and the host sees the peer listed in their modal.
+
+> **Group Sessions:** ANY number of devices can join the same 6-digit code. All devices will automatically form a full direct P2P mesh — every device talks directly to every other device. No server relays any messages.
+
+---
+
+### 📷 Method 2: QR Code Pairing (Phone-to-Phone, requires cameras)
+
+1. Both users open GhostChat and tap **`Pair (QR)`**.
+2. User 1 taps **Generate Offer QR**. A scannable QR code appears.
+3. User 2 taps **Scan Peer QR Code** and points their camera at User 1's screen.
+4. User 2's device shows an **Answer QR Code**.
 5. User 1 scans User 2's Answer QR code.
-6. **Done!** The status bar turns **GREEN (Connected)**. You are now communicating securely peer-to-peer!
+6. **Done!** Status bar turns **GREEN**.
+
+---
+
+### ✂️ Method 3: Manual SDP (No Camera, No Server — Air-Gapped Copy-Paste)
+
+Useful when there is no camera and the Python server is not running (pure air-gap):
+1. Tap **`Manual SDP`** on one device. Generate Offer (via **Pair (QR)** first), then copy the payload.
+2. Transfer the payload text to the other device (USB, clipboard, etc.).
+3. Paste it into the **Paste Peer Signal Payload** box and tap **`Connect with Peer`**.
 
 ---
 

@@ -11,6 +11,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- QR Code Generator (ISO/IEC 18004 compliant) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- jsQR — Pure JS QR decoder for camera frame scanning -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <!-- qrcode-generator — fallback standard QR render -->
+  <script src="https://cdn.rawgit.com/kazuhikoarase/qrcode-generator/master/js/qrcode.js"></script>
 </head>
 <body>
   <!-- Main Application Wrapper -->
@@ -58,14 +64,22 @@
 
     <!-- Navigation & Connection Control Toolbar -->
     <nav class="connection-toolbar">
-      <button id="btnPairQR" class="tool-btn active">
+      <button id="btnGroupCode" class="tool-btn active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="16" rx="2"/>
+          <path d="M8 10h8M8 14h5"/>
+        </svg>
+        <span>6-Digit Code</span>
+      </button>
+
+      <button id="btnPairQR" class="tool-btn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="7"/>
           <rect x="14" y="3" width="7" height="7"/>
           <rect x="14" y="14" width="7" height="7"/>
           <rect x="3" y="14" width="7" height="7"/>
         </svg>
-        <span>Pair (QR Scan)</span>
+        <span>Pair (QR)</span>
       </button>
 
       <button id="btnAudioFallback" class="tool-btn">
@@ -105,6 +119,15 @@
       </div>
     </section>
 
+    <!-- Connected Peer List (shows during group sessions) -->
+    <div id="peerListBar" class="peer-list-bar" style="display:none;">
+      <div class="peer-list-label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        Group Peers:
+      </div>
+      <div id="peerListItems" class="peer-list-items"></div>
+    </div>
+
     <!-- Main Chat Timeline Area -->
     <main class="chat-timeline" id="chatTimeline">
       <div class="empty-state" id="emptyState">
@@ -112,7 +135,7 @@
         <h3>Zero-Server Anonymous Messenger</h3>
         <p>No phone numbers, no emails, no central servers. Communicates directly over <strong>Local Wi-Fi / Hotspot</strong> or <strong>Ultrasonic Audio</strong>.</p>
         <div class="instruction-box">
-          <p><strong>To Connect:</strong> Tap <strong>Pair (QR Scan)</strong> above. One user taps <em>Show Offer QR</em> and the other scans it with their camera.</p>
+          <p><strong>To Connect:</strong> Tap <strong>6-Digit Code</strong> to create or join a group session — works between laptops, phones, and tablets on the same network!</p>
         </div>
       </div>
     </main>
@@ -147,7 +170,58 @@
 
   </div>
 
-  <!-- QR Pairing Modal -->
+  <!-- ===== 6-DIGIT GROUP SESSION CODE MODAL ===== -->
+  <div id="groupCodeModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="groupCodeModalTitle">Group Session — 6-Digit Code</h3>
+        <button class="close-modal" id="closeGroupCodeModal">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button id="tabCreateCode" class="tab-btn active">Create Session</button>
+        <button id="tabJoinCode" class="tab-btn">Join Session</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- CREATE SESSION TAB -->
+        <div id="sectionCreateCode" class="tab-content active">
+          <p class="guide-text">Share this 6-digit code with anyone on the same Wi-Fi or Hotspot. Works on phones, laptops, tablets — no camera needed.</p>
+
+          <div class="session-code-display" id="sessionCodeDisplay">
+            <div class="code-digits" id="codeDigits">------</div>
+            <div class="code-status" id="codeStatus">Tap below to generate a code</div>
+          </div>
+
+          <button id="btnCreateRoom" class="primary-btn" style="margin-top:16px;">✨ Generate Session Code</button>
+
+          <div id="waitingPeersList" style="display:none;margin-top:16px;">
+            <p class="guide-text" style="margin-bottom:8px;">Connected peers:</p>
+            <div id="hostPeerItems" class="peer-items-list"></div>
+          </div>
+        </div>
+
+        <!-- JOIN SESSION TAB -->
+        <div id="sectionJoinCode" class="tab-content" style="display: none;">
+          <p class="guide-text">Enter the 6-digit session code from your peer's screen. Works laptop-to-laptop, phone-to-laptop, or any combination.</p>
+
+          <div class="join-code-input-wrapper">
+            <input type="text" id="joinCodeInput" class="join-code-input" 
+                   maxlength="7" placeholder="000 000" 
+                   inputmode="numeric" autocomplete="off"
+                   id="joinCodeInput">
+          </div>
+
+          <button id="btnJoinRoom" class="primary-btn" style="margin-top:16px;">🔗 Connect to Session</button>
+          <div id="joinStatus" class="join-status-text" style="display:none;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== QR PAIRING MODAL ===== -->
   <div id="qrModal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
@@ -189,7 +263,7 @@
     </div>
   </div>
 
-  <!-- Manual SDP Copy/Paste Modal -->
+  <!-- ===== MANUAL SDP COPY/PASTE MODAL ===== -->
   <div id="manualSdpModal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
@@ -201,7 +275,7 @@
         
         <label>My Local Signal Payload:</label>
         <div class="copy-box">
-          <textarea id="mySignalPayload" readonly rows="3" placeholder="Click 'Generate Offer' first..."></textarea>
+          <textarea id="mySignalPayload" readonly rows="3" placeholder="Click 'Generate Offer' inside Pair (QR) modal first..."></textarea>
           <button id="btnCopySignal" class="secondary-btn">Copy</button>
         </div>
 
@@ -213,7 +287,7 @@
     </div>
   </div>
 
-  <!-- Audio Modem (Quiet.js Ultrasonic) Modal -->
+  <!-- ===== AUDIO MODEM MODAL ===== -->
   <div id="audioModemModal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
@@ -238,7 +312,7 @@
     </div>
   </div>
 
-  <!-- Session Password Lock Overlay (Anti-Biometric Coercion) -->
+  <!-- ===== SESSION PASSWORD LOCK OVERLAY ===== -->
   <div id="sessionLockOverlay" class="lock-overlay" style="display: none;">
     <div class="lock-card">
       <div class="lock-icon">
@@ -267,7 +341,7 @@
     </div>
   </div>
 
-  <!-- Audio Voice Recorder Overlay -->
+  <!-- ===== AUDIO VOICE RECORDER OVERLAY ===== -->
   <div id="voiceRecordOverlay" class="voice-modal" style="display: none;">
     <div class="voice-card">
       <div class="mic-pulse">🎤</div>

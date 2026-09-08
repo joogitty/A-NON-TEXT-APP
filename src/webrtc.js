@@ -1,155 +1,254 @@
 /**
- * GhostChat WebRTC PeerConnection Manager
- * Configured with empty ICE servers (`iceServers: []`) for pure LAN / Hotspot Direct Connection
- * Encapsulates DataChannel event handlers and chunked file transfer
+ * GhostChat Multi-Peer Full Mesh WebRTC Manager
+ * Manages multiple simultaneous RTCPeerConnection + DataChannel instances.
+ * Every peer connects to every other peer directly (no relay, no server for data).
+ * 
+ * Configured with empty iceServers for pure LAN / Hotspot Direct P2P.
  */
 
 class GhostWebRTC {
   constructor() {
-    this.peerConnection = null;
-    this.dataChannel = null;
-    this.onMessageReceived = null;
-    this.onConnectionStateChange = null;
-    this.pendingCandidates = [];
+    // Map<peerId, { peerConnection: RTCPeerConnection, dataChannel: RTCDataChannel, state: string }>
+    this.peers = new Map();
+
+    // Callbacks
+    this.onMessageReceived = null;        // fn(data, fromPeerId)
+    this.onConnectionStateChange = null;  // fn(state_summary_string)
+    this.onPeerJoined = null;             // fn(peerId)
+    this.onPeerLeft = null;               // fn(peerId)
+
+    // ICE candidate buffer: outgoing candidates queued while signaling in-flight
+    this._iceCandidateCallbacks = new Map(); // peerId -> fn(candidate)
   }
 
   /**
-   * Initializes RTCPeerConnection for LAN operation
+   * Creates a new RTCPeerConnection for a peer, wires state/channel listeners.
    */
-  async createPeerConnection() {
-    // Zero STUN/TURN servers - pure host candidate LAN P2P
-    this.peerConnection = new RTCPeerConnection({
-      iceServers: []
-    });
+  _createPeerConnection(peerId) {
+    const pc = new RTCPeerConnection({ iceServers: [] });
 
-    this.peerConnection.onicecandidate = (event) => {
+    pc.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('[WebRTC] Gathered host ICE candidate:', event.candidate.candidate);
+        const cb = this._iceCandidateCallbacks.get(peerId);
+        if (cb) cb({ type: 'ice', candidate: event.candidate.toJSON() });
       }
     };
 
-    this.peerConnection.onconnectionstatechange = () => {
-      const state = this.peerConnection.connectionState;
-      console.log('[WebRTC] Connection State Changed:', state);
-      if (this.onConnectionStateChange) {
-        this.onConnectionStateChange(state);
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log(`[WebRTC][${peerId}] Connection state: ${state}`);
+      if (state === 'connected') {
+        if (this.peers.has(peerId)) this.peers.get(peerId).state = 'connected';
+        this._broadcastStatusUpdate();
+        if (this.onPeerJoined) this.onPeerJoined(peerId);
+      } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        this._removePeer(peerId);
+        this._broadcastStatusUpdate();
+        if (this.onPeerLeft) this.onPeerLeft(peerId);
       }
     };
 
-    this.peerConnection.ondatachannel = (event) => {
-      console.log('[WebRTC] DataChannel received from offerer');
-      this.setupDataChannel(event.channel);
+    pc.ondatachannel = (event) => {
+      console.log(`[WebRTC][${peerId}] Incoming DataChannel`);
+      this._setupDataChannel(peerId, event.channel);
     };
 
-    return this.peerConnection;
+    return pc;
   }
 
   /**
-   * Creates WebRTC SDP Offer (Offerer side)
+   * Set up DataChannel event listeners for a given peer
    */
-  async createOffer() {
-    await this.createPeerConnection();
+  _setupDataChannel(peerId, channel) {
+    channel.binaryType = 'arraybuffer';
 
-    // Create DataChannel
-    const channel = this.peerConnection.createDataChannel('ghost-channel', {
-      ordered: true
-    });
-    this.setupDataChannel(channel);
-
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-
-    // Wait 500ms to gather local host candidates
-    await new Promise(r => setTimeout(r, 500));
-
-    return this.peerConnection.localDescription;
-  }
-
-  /**
-   * Processes Peer Offer and creates WebRTC SDP Answer (Answerer side)
-   */
-  async createAnswer(decompressedOffer) {
-    await this.createPeerConnection();
-
-    const offerDescription = new RTCSessionDescription({
-      type: decompressedOffer.type,
-      sdp: decompressedOffer.sdp
-    });
-
-    await this.peerConnection.setRemoteDescription(offerDescription);
-
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
-
-    // Wait 500ms to gather host candidates
-    await new Promise(r => setTimeout(r, 500));
-
-    return this.peerConnection.localDescription;
-  }
-
-  /**
-   * Sets Remote Answer on Offerer side
-   */
-  async setRemoteAnswer(decompressedAnswer) {
-    const answerDescription = new RTCSessionDescription({
-      type: decompressedAnswer.type,
-      sdp: decompressedAnswer.sdp
-    });
-
-    await this.peerConnection.setRemoteDescription(answerDescription);
-  }
-
-  /**
-   * Configures DataChannel listeners
-   */
-  setupDataChannel(channel) {
-    this.dataChannel = channel;
-    this.dataChannel.binaryType = 'arraybuffer';
-
-    this.dataChannel.onopen = () => {
-      console.log('✅ WebRTC DataChannel OPEN & READY!');
-      if (this.onConnectionStateChange) {
-        this.onConnectionStateChange('connected');
+    channel.onopen = () => {
+      console.log(`✅ [WebRTC][${peerId}] DataChannel OPEN`);
+      if (this.peers.has(peerId)) {
+        this.peers.get(peerId).dataChannel = channel;
+        this.peers.get(peerId).state = 'connected';
       }
+      this._broadcastStatusUpdate();
+      if (this.onPeerJoined) this.onPeerJoined(peerId);
     };
 
-    this.dataChannel.onclose = () => {
-      console.log('❌ WebRTC DataChannel CLOSED');
-      if (this.onConnectionStateChange) {
-        this.onConnectionStateChange('disconnected');
-      }
+    channel.onclose = () => {
+      console.log(`❌ [WebRTC][${peerId}] DataChannel CLOSED`);
+      this._removePeer(peerId);
+      this._broadcastStatusUpdate();
+      if (this.onPeerLeft) this.onPeerLeft(peerId);
     };
 
-    this.dataChannel.onmessage = (event) => {
+    channel.onmessage = (event) => {
       if (this.onMessageReceived) {
-        this.onMessageReceived(event.data);
+        this.onMessageReceived(event.data, peerId);
       }
     };
+
+    if (this.peers.has(peerId)) {
+      this.peers.get(peerId).dataChannel = channel;
+    }
   }
 
   /**
-   * Sends encrypted payload over DataChannel
+   * Creates a WebRTC Offer for a specific peer (we are the offerer).
+   * Returns { sdpOffer: RTCSessionDescription, onIceCandidate: Function }
    */
-  send(payload) {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      throw new Error('DataChannel is not open');
+  async createOffer(peerId, onIceCandidateReady) {
+    const pc = this._createPeerConnection(peerId);
+
+    const channel = pc.createDataChannel('ghost-channel', { ordered: true });
+    this._setupDataChannel(peerId, channel);
+
+    this.peers.set(peerId, { peerConnection: pc, dataChannel: channel, state: 'connecting' });
+    if (onIceCandidateReady) this._iceCandidateCallbacks.set(peerId, onIceCandidateReady);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Wait for ICE gathering to settle
+    await new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') { resolve(); return; }
+      const check = () => { if (pc.iceGatheringState === 'complete') { resolve(); } };
+      pc.onicegatheringstatechange = check;
+      setTimeout(resolve, 1500); // fallback timeout
+    });
+
+    return pc.localDescription;
+  }
+
+  /**
+   * Processes a peer's Offer and creates an Answer (we are the answerer).
+   */
+  async createAnswer(peerId, offerSdpObject, onIceCandidateReady) {
+    const pc = this._createPeerConnection(peerId);
+    this.peers.set(peerId, { peerConnection: pc, dataChannel: null, state: 'connecting' });
+    if (onIceCandidateReady) this._iceCandidateCallbacks.set(peerId, onIceCandidateReady);
+
+    await pc.setRemoteDescription(new RTCSessionDescription(offerSdpObject));
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') { resolve(); return; }
+      const check = () => { if (pc.iceGatheringState === 'complete') { resolve(); } };
+      pc.onicegatheringstatechange = check;
+      setTimeout(resolve, 1500);
+    });
+
+    return pc.localDescription;
+  }
+
+  /**
+   * Sets the remote Answer SDP on our side (completing the offerer's handshake)
+   */
+  async setRemoteAnswer(peerId, answerSdpObject) {
+    const peer = this.peers.get(peerId);
+    if (!peer) throw new Error(`[WebRTC] No peer found for id: ${peerId}`);
+    await peer.peerConnection.setRemoteDescription(new RTCSessionDescription(answerSdpObject));
+  }
+
+  /**
+   * Adds a remote ICE candidate for a specific peer
+   */
+  async addIceCandidate(peerId, candidateInit) {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+    try {
+      await peer.peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
+    } catch (e) {
+      console.warn(`[WebRTC][${peerId}] Failed to add ICE candidate:`, e);
+    }
+  }
+
+  /**
+   * Broadcasts encrypted message to ALL connected peers
+   */
+  broadcast(payload) {
+    const messageString = typeof payload === 'object' ? JSON.stringify(payload) : payload;
+    let sent = 0;
+    this.peers.forEach((peer, peerId) => {
+      if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+        peer.dataChannel.send(messageString);
+        sent++;
+      }
+    });
+    if (sent === 0) throw new Error('No connected peers to send to.');
+    return sent;
+  }
+
+  /**
+   * Sends a message to a single specific peer
+   */
+  sendToPeer(peerId, payload) {
+    const peer = this.peers.get(peerId);
+    if (!peer || !peer.dataChannel || peer.dataChannel.readyState !== 'open') {
+      throw new Error(`Peer ${peerId} is not connected`);
     }
     const messageString = typeof payload === 'object' ? JSON.stringify(payload) : payload;
-    this.dataChannel.send(messageString);
+    peer.dataChannel.send(messageString);
   }
 
   /**
-   * Closes connection
+   * Legacy single-peer send compatibility (uses broadcast)
    */
-  close() {
-    if (this.dataChannel) {
-      this.dataChannel.close();
-      this.dataChannel = null;
+  send(payload) {
+    return this.broadcast(payload);
+  }
+
+  /**
+   * Returns number of currently connected peers
+   */
+  get connectedPeerCount() {
+    let count = 0;
+    this.peers.forEach(p => { if (p.state === 'connected') count++; });
+    return count;
+  }
+
+  /**
+   * Returns array of all connected peer IDs
+   */
+  get connectedPeerIds() {
+    return Array.from(this.peers.keys()).filter(id => this.peers.get(id).state === 'connected');
+  }
+
+  /**
+   * Broadcasts current connection state to app
+   */
+  _broadcastStatusUpdate() {
+    if (!this.onConnectionStateChange) return;
+    const count = this.connectedPeerCount;
+    if (count === 0) {
+      this.onConnectionStateChange('disconnected');
+    } else if (count === 1) {
+      this.onConnectionStateChange('connected');
+    } else {
+      this.onConnectionStateChange(`group:${count}`);
     }
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
+  }
+
+  /**
+   * Removes a peer from the mesh
+   */
+  _removePeer(peerId) {
+    const peer = this.peers.get(peerId);
+    if (peer) {
+      try { peer.dataChannel && peer.dataChannel.close(); } catch (_) {}
+      try { peer.peerConnection && peer.peerConnection.close(); } catch (_) {}
+      this.peers.delete(peerId);
+      this._iceCandidateCallbacks.delete(peerId);
     }
+  }
+
+  /**
+   * Closes all peer connections
+   */
+  closeAll() {
+    this.peers.forEach((_, peerId) => this._removePeer(peerId));
+    this.peers.clear();
+    this._iceCandidateCallbacks.clear();
+    if (this.onConnectionStateChange) this.onConnectionStateChange('disconnected');
   }
 }
 
